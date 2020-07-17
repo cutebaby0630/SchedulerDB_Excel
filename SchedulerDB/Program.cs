@@ -1,20 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.ComponentModel.Design;
 using System.Data;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography.Pkcs;
 using Microsoft.Extensions.Configuration;
 using OfficeOpenXml;
-using OfficeOpenXml.ConditionalFormatting;
 using OfficeOpenXml.Style;
-using ServiceStack.Text;
 using SqlServerHelper.Core;
-
+using SqlServerHelper;
 
 namespace SchedulerDB
 {
@@ -207,7 +202,24 @@ namespace SchedulerDB
                 File.WriteAllBytes(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname, bin);
             }
             //Step 4.Export EXCEL
-            helper = new SMTPHelper("lovemath0630@gmail.com", "bdxcwslpqcysxown", "smtp.gmail.com", 587, true, true);
+
+            //Send Email
+            var helper = new SMTPHelper("lovemath0630@gmail.com", "koormyktfbbacpmj", "smtp.gmail.com", 587, true, true); //寄出信email
+            string subject = $"Datebase Scheduler報表 {DateTime.Now.ToString("yyyyMMdd")}"; //信件主旨
+            string body = $"Hi All, \r\n\r\n{DateTime.Now.ToString("yyyyMMdd")} Scheduler報表 如附件，\r\n\r\n Vicky Yin";//信件內容
+            string  attachments =  null;//附件
+
+            var fileName = excel_new;//附件位置
+                if (File.Exists(fileName.ToString()))
+                {
+                     attachments = fileName.ToString();
+                }
+           
+
+            string toMailList = "lovemath0630@gmail.com";//收件者
+            string ccMailList = "v-vyin@microsoft.com";//CC收件者
+
+            helper.SendMail(toMailList, ccMailList, null, subject, body, attachments);
         }
 
         public class Data
