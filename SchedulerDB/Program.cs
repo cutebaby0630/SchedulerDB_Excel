@@ -43,7 +43,7 @@ namespace SchedulerDB
 
         static void Main(string[] args)
         {
-             string sql = @"IF object_id('tempdb..#RESTTReservation') IS NOT NULL DROP TABLE #RESTTReservation
+            string sql = @"IF object_id('tempdb..#RESTTReservation') IS NOT NULL DROP TABLE #RESTTReservation
 
                             SELECT a.RoomCode RESRoomCode,
                                    b.RoomCode XRYRoomCode,a.CalendarGroupName,
@@ -96,21 +96,17 @@ namespace SchedulerDB
             // DataTable dt = sqlHelper.FillTableAsync(sql).Result;
             DataTable dt = sqlHelper.FillTableAsync(sql).Result;
             //印出list
-            int rowCount = (dt == null) ? 0 : dt.Rows.Count;
+            //int rowCount = (dt == null) ? 0 : dt.Rows.Count;
+            //Console.WriteLine(rowCount);
 
-            Console.WriteLine(rowCount);
             //Step 1.1.將資料放入List
             List<Data> migrationTableInfoList = sqlHelper.QueryAsync<Data>(sql).Result?.ToList();
-            //Step 1.2 將Date Distinct  遞增 order by 遞減OrderByDescending
+            //Step 1.2 將date Distinct排序給sheet用 > 遞增 order by 遞減OrderByDescending
             var datetime = migrationTableInfoList.Select(p => p.Start != DateTime.MinValue ? p.Start.Date : p.PlanDate.Date)
                                                  .OrderBy(p => p.Date)
                                                  .Distinct()
                                                  .ToList();
-
-
-
-
-            //Step 1.3.Group by start 塞入新的list
+            //Step 1.3.Group by start 塞入新的list -- 不需要
             /*  var result = from sqllist in migrationTableInfoList
                            join date in datetime
                            on (sqllist.Start != DateTime.MinValue) ? sqllist.Start : sqllist.PlanDate equals date into map
@@ -122,45 +118,37 @@ namespace SchedulerDB
                   Console.WriteLine(x);
               }*/
             //Step 2.建立 各日期Sheet
-            var excelname = "Scheduler" + DateTime.Now.ToString("yyyyMMddhhmm") + ".xlsx";
-            var excel = new FileInfo(excelname);
+            // var excelname = "Scheduler" + DateTime.Now.ToString("yyyyMMddhhmm") + ".xlsx";
+            var excelname = new FileInfo("Scheduler" + DateTime.Now.ToString("yyyyMMddhhmm") + ".xlsx");
             //ExcelPackage.LicenseContext = LicenseContext.Commercial;
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            using (var finish = new ExcelPackage(excel))
+            using (var excel = new ExcelPackage(excelname))
             {
-                for (int num = 0; num <= datetime.Count - 1; num++)
+                for (int sheetnum = 0; sheetnum <= datetime.Count - 1; sheetnum++)
                 {
-                    finish.Workbook.Worksheets.Add(datetime[num].ToString("yyyy-MM-dd"));
-                }
-                Byte[] bin = finish.GetAsByteArray();
-                File.WriteAllBytes(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname, bin);
-
-            }
-            //Step 3.將對應的List 丟到各Sheet中
-            FileInfo excel_new = new FileInfo(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname);
-            using (ExcelPackage package = new ExcelPackage(excel_new))
-            {
-
-                for (int num = 0; num <= datetime.Count - 1; num++)
-                {
-                    ExcelWorksheet sheet = package.Workbook.Worksheets[num];
+                    //Step 3.將對應的List 丟到各Sheet中
+                    ExcelWorksheet sheet = excel.Workbook.Worksheets.Add(datetime[sheetnum].ToString("yyyy-MM-dd"));
                     int rowIndex = 1;
                     int colIndex = 1;
 
-                    //3.1塞資料到某一格
-                    sheet.Cells[rowIndex, colIndex++].Value = "新檢查室";
-                    sheet.Cells[rowIndex, colIndex++].Value = "舊檢查室";
-                    sheet.Cells[rowIndex, colIndex++].Value = "檢查室名稱";
-                    sheet.Cells[rowIndex, colIndex++].Value = "病歷號";
-                    sheet.Cells[rowIndex, colIndex++].Value = "檢查單號";
-                    sheet.Cells[rowIndex, colIndex++].Value = "檢查時間";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機病歷號";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機單號";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機排程日";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機排程時間";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼1";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼2";
-                    sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼3";
+                    //3.1塞columnName 到第一個Row 
+                    for (int columnNameIndex = 0; columnNameIndex <= dt.Columns.Count - 1; columnNameIndex++)
+                    {
+                        sheet.Cells[rowIndex, colIndex++].Value = dt.Columns[columnNameIndex].ColumnName;
+
+                    }
+                    /* sheet.Cells[rowIndex, colIndex++].Value = "舊檢查室";
+                     sheet.Cells[rowIndex, colIndex++].Value = "檢查室名稱";
+                     sheet.Cells[rowIndex, colIndex++].Value = "病歷號";
+                     sheet.Cells[rowIndex, colIndex++].Value = "檢查單號";
+                     sheet.Cells[rowIndex, colIndex++].Value = "檢查時間";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機病歷號";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機單號";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機排程日";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機排程時間";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼1";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼2";
+                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼3";*/
                     sheet.Cells[rowIndex, 1, rowIndex, colIndex - 1]
                          .SetQuickStyle(Color.Black, Color.LightPink, ExcelHorizontalAlignment.Center);
 
@@ -194,28 +182,24 @@ namespace SchedulerDB
                         sheet.Column(count).AutoFit();
                     }
                 }
-                
-                
-                
-
-                Byte[] bin = package.GetAsByteArray();
+                Byte[] bin = excel.GetAsByteArray();
                 File.WriteAllBytes(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname, bin);
+
             }
+
+
             //Step 4.Export EXCEL
 
             //Send Email
             var helper = new SMTPHelper("lovemath0630@gmail.com", "koormyktfbbacpmj", "smtp.gmail.com", 587, true, true); //寄出信email
             string subject = $"Datebase Scheduler報表 {DateTime.Now.ToString("yyyyMMdd")}"; //信件主旨
             string body = $"Hi All, \r\n\r\n{DateTime.Now.ToString("yyyyMMdd")} Scheduler報表 如附件，\r\n\r\n Vicky Yin";//信件內容
-            string  attachments =  null;//附件
-
-            var fileName = excel_new;//附件位置
-                if (File.Exists(fileName.ToString()))
-                {
-                     attachments = fileName.ToString();
-                }
-           
-
+            string attachments = null;//附件
+            var fileName = @"D:\微軟MCS\SchedulerDB_Excel\" + excelname;//附件位置
+            if (File.Exists(fileName.ToString()))
+            {
+                attachments = fileName.ToString();
+            }
             string toMailList = "lovemath0630@gmail.com";//收件者
             string ccMailList = "v-vyin@microsoft.com";//CC收件者
 
