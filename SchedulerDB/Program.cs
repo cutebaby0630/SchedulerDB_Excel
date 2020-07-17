@@ -10,6 +10,7 @@ using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using SqlServerHelper.Core;
 using SqlServerHelper;
+using System.Runtime.CompilerServices;
 
 namespace SchedulerDB
 {
@@ -100,7 +101,7 @@ namespace SchedulerDB
             //Console.WriteLine(rowCount);
 
             //Step 1.1.將資料放入List
-            List<Data> migrationTableInfoList = sqlHelper.QueryAsync<Data>(sql).Result?.ToList();
+            List<DBData> migrationTableInfoList = sqlHelper.QueryAsync<DBData>(sql).Result?.ToList();
             //Step 1.2 將date Distinct排序給sheet用 > 遞增 order by 遞減OrderByDescending
             var datetime = migrationTableInfoList.Select(p => p.Start != DateTime.MinValue ? p.Start.Date : p.PlanDate.Date)
                                                  .OrderBy(p => p.Date)
@@ -128,69 +129,19 @@ namespace SchedulerDB
                 {
                     //Step 3.將對應的List 丟到各Sheet中
                     ExcelWorksheet sheet = excel.Workbook.Worksheets.Add(datetime[sheetnum].ToString("yyyy-MM-dd"));
+                    //抽function
                     int rowIndex = 1;
                     int colIndex = 1;
-
-                    //3.1塞columnName 到第一個Row 
-                    for (int columnNameIndex = 0; columnNameIndex <= dt.Columns.Count - 1; columnNameIndex++)
-                    {
-                        sheet.Cells[rowIndex, colIndex++].Value = dt.Columns[columnNameIndex].ColumnName;
-
-                    }
-                    /* sheet.Cells[rowIndex, colIndex++].Value = "舊檢查室";
-                     sheet.Cells[rowIndex, colIndex++].Value = "檢查室名稱";
-                     sheet.Cells[rowIndex, colIndex++].Value = "病歷號";
-                     sheet.Cells[rowIndex, colIndex++].Value = "檢查單號";
-                     sheet.Cells[rowIndex, colIndex++].Value = "檢查時間";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機病歷號";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機單號";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機排程日";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機排程時間";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼1";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼2";
-                     sheet.Cells[rowIndex, colIndex++].Value = "主機檢查碼3";*/
-                    sheet.Cells[rowIndex, 1, rowIndex, colIndex - 1]
-                         .SetQuickStyle(Color.Black, Color.LightPink, ExcelHorizontalAlignment.Center);
-
-                    //將對應值放入
-                    foreach (var v in migrationTableInfoList)
-                    {
-                        if (sheet.ToString() == (v.Start != DateTime.MinValue ? v.Start.ToString("yyyy-MM-dd") : v.PlanDate.ToString("yyyy-MM-dd")))
-                        {
-                            rowIndex++;
-                            colIndex = 1;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.RESRoomCode;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.XRYRoomCode;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.CalendarGroupName;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.MedicalNoteNo;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.ExaRequestNo;
-                            sheet.Cells[rowIndex, colIndex].Value = v.Start;
-                            sheet.Cells[rowIndex, colIndex].Style.Numberformat.Format = DateTimeFormatInfo.CurrentInfo.ShortDatePattern;
-                            sheet.Cells[rowIndex, colIndex++].Style.Numberformat.Format = "yyyy/MM/dd HH:mm:ss";
-                            sheet.Cells[rowIndex, colIndex++].Value = v.DVC_CHRT;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.DVC_RQNO;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.DVC_DATE;
-                            sheet.Cells[rowIndex, colIndex++].Value = v.DVC_STTM;
-                        }
-                    }
-
-                    //Autofit
-                    int startColumn = sheet.Dimension.Start.Column;
-                    int endColumn = sheet.Dimension.End.Column;
-                    for (int count = startColumn; count <= endColumn; count++)
-                    {
-                        sheet.Column(count).AutoFit();
-                    }
+                    var importDBData = new ImportDBData();
+                    importDBData.ImportData(dt, sheet, rowIndex, colIndex, migrationTableInfoList);
                 }
-                Byte[] bin = excel.GetAsByteArray();
+                // Step 4.Export EXCEL
+                 Byte[] bin = excel.GetAsByteArray();
                 File.WriteAllBytes(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname, bin);
 
             }
-
-
-            //Step 4.Export EXCEL
-
-            //Send Email
+            
+            //Step 5. Send Email
             var helper = new SMTPHelper("lovemath0630@gmail.com", "koormyktfbbacpmj", "smtp.gmail.com", 587, true, true); //寄出信email
             string subject = $"Datebase Scheduler報表 {DateTime.Now.ToString("yyyyMMdd")}"; //信件主旨
             string body = $"Hi All, \r\n\r\n{DateTime.Now.ToString("yyyyMMdd")} Scheduler報表 如附件，\r\n\r\n Vicky Yin";//信件內容
@@ -200,13 +151,13 @@ namespace SchedulerDB
             {
                 attachments = fileName.ToString();
             }
-            string toMailList = "lovemath0630@gmail.com";//收件者
-            string ccMailList = "v-vyin@microsoft.com";//CC收件者
+            string toMailList = "lovemath0630@gmail.com;v-vyin@microsoft.com";//收件者
+            string ccMailList = "";//CC收件者
 
             helper.SendMail(toMailList, ccMailList, null, subject, body, attachments);
         }
 
-        public class Data
+        public class DBData
         {
             public string RESRoomCode { get; set; }
             public string XRYRoomCode { get; set; }
@@ -223,6 +174,62 @@ namespace SchedulerDB
             public string XRYSourceCode { get; set; }
             public DateTime PlanDate { get; set; }
         }
+        public class ImportDBData {
+            private ExcelWorksheet _sheet { get; set; }
+            private int _rowIndex { get; set; }
+            private int _colIndex { get; set; }
+            private DataTable _dt { get; set; }
+            private List<DBData> _dblist { get; set; }
+            public void ImportData(DataTable dt, ExcelWorksheet sheet, int rowIndex, int colIndex, List<DBData> dblist)
+            {
+                _sheet = sheet;
+                _rowIndex = rowIndex;
+                _colIndex = colIndex;
+                _dt = dt;
+                _dblist = dblist;
+                //3.1塞columnName 到第一個Row 
+                for (int columnNameIndex = 0; columnNameIndex <= _dt.Columns.Count - 1; columnNameIndex++)
+                {
+                    _sheet.Cells[_rowIndex, _colIndex++].Value = _dt.Columns[columnNameIndex].ColumnName;
+
+                }
+                _sheet.Cells[_rowIndex, 1, _rowIndex, _colIndex - 1]
+                     .SetQuickStyle(Color.Black, Color.LightPink, ExcelHorizontalAlignment.Center);
+
+                //將對應值放入
+                foreach (var dbdata in _dblist)
+                {
+                    if (_sheet.ToString() == (dbdata.Start != DateTime.MinValue ? dbdata.Start.ToString("yyyy-MM-dd") : dbdata.PlanDate.ToString("yyyy-MM-dd")))
+                    {
+                        _rowIndex++;
+                        _colIndex = 1;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.RESRoomCode;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.XRYRoomCode;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.CalendarGroupName;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.MedicalNoteNo;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.ExaRequestNo;
+                        _sheet.Cells[_rowIndex, _colIndex].Value = dbdata.Start;
+                        _sheet.Cells[_rowIndex, _colIndex].Style.Numberformat.Format = DateTimeFormatInfo.CurrentInfo.ShortDatePattern;
+                        _sheet.Cells[_rowIndex, _colIndex++].Style.Numberformat.Format = "yyyy/MM/dd HH:mm:ss";
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.DVC_CHRT;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.DVC_RQNO;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.DVC_DATE;
+                        _sheet.Cells[_rowIndex, _colIndex++].Value = dbdata.DVC_STTM;
+                    }
+                }
+
+                //Autofit
+                int startColumn = _sheet.Dimension.Start.Column;
+                int endColumn = _sheet.Dimension.End.Column;
+                for (int count = startColumn; count <= endColumn; count++)
+                {
+                    _sheet.Column(count).AutoFit();
+                }
+
+
+            }
+        }
+       
 
     }
 }
