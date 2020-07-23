@@ -10,7 +10,10 @@ using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using SqlServerHelper.Core;
 using SqlServerHelper;
-using System.Runtime.CompilerServices;
+using System.ComponentModel;
+using LicenseContext = OfficeOpenXml.LicenseContext;
+using System.Reflection;
+using System.ComponentModel.DataAnnotations;
 
 namespace SchedulerDB
 {
@@ -85,7 +88,7 @@ namespace SchedulerDB
 
                              ) b ON a.MedicalNoteNo = b.DVC_CHRT AND a.ExaRequestNo = b.DVC_RQNO
 
-                             select * from #RESTTReservation 
+                             select RESRoomCode,XRYRoomCode,CalendarGroupName,MedicalNoteNo,ExaRequestNo,Start,DVC_CHRT,DVC_RQNO,DVC_DATE,DVC_STTM from #RESTTReservation order by RESRoomCode;
                                  ";
 
             //Step 1.讀取DB Table List
@@ -107,17 +110,6 @@ namespace SchedulerDB
                                                  .OrderBy(p => p.Date)
                                                  .Distinct()
                                                  .ToList();
-            //Step 1.3.Group by start 塞入新的list -- 不需要
-            /*  var result = from sqllist in migrationTableInfoList
-                           join date in datetime
-                           on (sqllist.Start != DateTime.MinValue) ? sqllist.Start : sqllist.PlanDate equals date into map
-                           from allresult in map
-                           select new { sqllist.Start, sqllist.PlanDate, date = allresult.ToString()};
-
-              foreach (var x in result)
-              {
-                  Console.WriteLine(x);
-              }*/
             //Step 2.建立 各日期Sheet
             // var excelname = "Scheduler" + DateTime.Now.ToString("yyyyMMddhhmm") + ".xlsx";
             var excelname = new FileInfo("Scheduler" + DateTime.Now.ToString("yyyyMMddhhmm") + ".xlsx");
@@ -125,26 +117,27 @@ namespace SchedulerDB
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             using (var excel = new ExcelPackage(excelname))
             {
+                var importDBData = new ImportDBData();
+                importDBData.GenFirstSheet(excel, datetime);
                 for (int sheetnum = 0; sheetnum <= datetime.Count - 1; sheetnum++)
                 {
                     //Step 3.將對應的List 丟到各Sheet中
                     ExcelWorksheet sheet = excel.Workbook.Worksheets.Add(datetime[sheetnum].ToString("yyyy-MM-dd"));
                     //抽function
-                    int rowIndex = 1;
+                    int rowIndex = 2;
                     int colIndex = 1;
-                    var importDBData = new ImportDBData();
                     importDBData.ImportData(dt, sheet, rowIndex, colIndex, migrationTableInfoList);
                 }
                 // Step 4.Export EXCEL
-                 Byte[] bin = excel.GetAsByteArray();
+                Byte[] bin = excel.GetAsByteArray();
                 File.WriteAllBytes(@"D:\微軟MCS\SchedulerDB_Excel\" + excelname, bin);
 
             }
-            
+
             //Step 5. Send Email
             var helper = new SMTPHelper("lovemath0630@gmail.com", "koormyktfbbacpmj", "smtp.gmail.com", 587, true, true); //寄出信email
             string subject = $"Datebase Scheduler報表 {DateTime.Now.ToString("yyyyMMdd")}"; //信件主旨
-            string body = $"Hi All, \r\n\r\n{DateTime.Now.ToString("yyyyMMdd")} Scheduler報表 如附件，\r\n\r\n Vicky Yin";//信件內容
+            string body = $"Hi All, \r\n\r\n{DateTime.Now.ToString("yyyyMMdd")} Scheduler報表 如附件，\r\n\r\n Best Regards, \r\n\r\n Vicky Yin";//信件內容
             string attachments = null;//附件
             var fileName = @"D:\微軟MCS\SchedulerDB_Excel\" + excelname;//附件位置
             if (File.Exists(fileName.ToString()))
@@ -159,22 +152,45 @@ namespace SchedulerDB
 
         public class DBData
         {
+            [Required]
+            [DisplayName("新檢查室")]
             public string RESRoomCode { get; set; }
+            [Required]
+            [DisplayName("舊檢查室")]
             public string XRYRoomCode { get; set; }
+            [Required]
+            [DisplayName("檢查室名稱")]
             public string CalendarGroupName { get; set; }
+            [Required]
+            [DisplayName("病歷號")]
             public string MedicalNoteNo { get; set; }
+            [Required]
+            [DisplayName("檢查單號")]
             public string ExaRequestNo { get; set; }
+            [Required]
+            [DisplayName("檢查時間")]
             public DateTime Start { get; set; }
             public string ReservationSourceType { get; set; }
             public string SourceCode { get; set; }
+            [Required]
+            [DisplayName("主機病歷號")]
             public string DVC_CHRT { get; set; }
+            [Required]
+            [DisplayName("主機單號")]
             public string DVC_RQNO { get; set; }
+            [Required]
+            [DisplayName("主機排程日")]
             public string DVC_DATE { get; set; }
+            [Required]
+            [DisplayName("主機排程時間")]
             public string DVC_STTM { get; set; }
+            [Required]
+            [DisplayName("主機檢查碼1")]
             public string XRYSourceCode { get; set; }
             public DateTime PlanDate { get; set; }
         }
-        public class ImportDBData {
+        public class ImportDBData
+        {
             private ExcelWorksheet _sheet { get; set; }
             private int _rowIndex { get; set; }
             private int _colIndex { get; set; }
@@ -187,10 +203,18 @@ namespace SchedulerDB
                 _colIndex = colIndex;
                 _dt = dt;
                 _dblist = dblist;
-                //3.1塞columnName 到第一個Row 
+                _sheet.Cells[_rowIndex - 1, _colIndex].Value = "返回目錄";
+                _sheet.Cells[_rowIndex - 1, _colIndex].SetHyperlink(new Uri($"#'目錄'!A1", UriKind.Relative));
+
+                //3.1塞columnName 到Row 
                 for (int columnNameIndex = 0; columnNameIndex <= _dt.Columns.Count - 1; columnNameIndex++)
                 {
-                    _sheet.Cells[_rowIndex, _colIndex++].Value = _dt.Columns[columnNameIndex].ColumnName;
+                    MemberInfo property = typeof(DBData).GetProperty((_dt.Columns[columnNameIndex].ColumnName == null ? string.Empty : _dt.Columns[columnNameIndex].ColumnName));
+                    var attribute = property.GetCustomAttributes(typeof(DisplayNameAttribute), true)
+                                            .Cast<DisplayNameAttribute>().Single();
+                    string columnName = attribute.DisplayName;
+                    _sheet.Cells[_rowIndex, _colIndex++].Value = columnName;
+
 
                 }
                 _sheet.Cells[_rowIndex, 1, _rowIndex, _colIndex - 1]
@@ -228,8 +252,41 @@ namespace SchedulerDB
 
 
             }
+            public void GenFirstSheet(ExcelPackage excel, List<DateTime> list)
+            {
+                int rowIndex = 1;
+                int colIndex = 1;
+
+                int maxCol = 0;
+
+                ExcelWorksheet firstSheet = excel.Workbook.Worksheets.Add("目錄");
+
+                firstSheet.Cells[rowIndex, colIndex++].Value = "";
+                firstSheet.Cells[rowIndex, colIndex++].Value = "檢查時間";
+
+                firstSheet.Cells[rowIndex, 1, rowIndex, colIndex - 1]
+                    .SetQuickStyle(Color.Black, Color.LightPink, ExcelHorizontalAlignment.Center);
+
+                maxCol = Math.Max(maxCol, colIndex - 1);
+
+                foreach (DateTime info in list)
+                {
+                    rowIndex++;
+                    colIndex = 1;
+
+                    firstSheet.Cells[rowIndex, colIndex++].Value = rowIndex - 1;
+                    firstSheet.Cells[rowIndex, colIndex++].Value = info.ToString("yyyy-MM-dd");
+                    firstSheet.Cells[rowIndex, colIndex - 1].SetHyperlink(new Uri($"#'{(string.IsNullOrEmpty(info.ToString("yyyy-MM-dd")) ? info.ToString("yyyy-MM-dd") : info.ToString("yyyy-MM-dd"))}'!A1", UriKind.Relative));
+                }
+
+                for (int i = 1; i <= maxCol; i++)
+                {
+                    firstSheet.Column(i).AutoFit();
+                }
+            }
+
         }
-       
+
 
     }
 }
