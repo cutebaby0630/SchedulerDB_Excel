@@ -12,7 +12,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="5.0.0-preview.6.20305.6" />
     <PackageReference Include="ServiceStack.Text" Version="5.9.0" />
     <PackageReference Include="System.CodeDom" Version="5.0.0-preview.6.20305.6" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.8.1" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
   </ItemGroup>
 
   <ItemGroup>
